@@ -1,94 +1,265 @@
+/*
+  Best dark theme with animated background, glowing headers, smooth transitions, and modern layout for Secure C HTTPS Server
+*/
+:root {
+    --bg: #181c24;
+    --bg2: #23283a;
+    --primary: #00e6d0;
+    --accent: #ffb86c;
+    --text: #e6e6e6;
+    --text-muted: #b0b0b0;
+    --card: #23283aee;
+    --border: #2d334d;
+    --shadow: 0 4px 32px 0 #000a;
+    --glow: 0 0 8px var(--primary), 0 0 24px var(--primary);
+    --font-main: 'Montserrat', Arial, sans-serif;
+    --font-mono: 'Fira Mono', monospace;
+}
+
+html,
 body {
-    font-family: 'Segoe UI', Arial, sans-serif;
+    height: 100%;
     margin: 0;
     padding: 0;
-    background: #f4f6f8;
-    color: #222;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-main);
+    min-height: 100vh;
+    scroll-behavior: smooth;
+}
+
+.background-anim {
+    position: fixed;
+    z-index: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 20% 30%, #00e6d055 0%, transparent 70%),
+        radial-gradient(circle at 80% 70%, #ffb86c33 0%, transparent 80%),
+        linear-gradient(120deg, #23283a 0%, #181c24 100%);
+    animation: bgmove 12s linear infinite alternate;
+}
+
+@keyframes bgmove {
+    0% {
+        background-position: 20% 30%, 80% 70%;
+    }
+
+    100% {
+        background-position: 30% 40%, 70% 60%;
+    }
 }
 
 header {
-    background: #2d3e50;
-    color: #fff;
-    padding: 1.5rem 0 1rem 0;
+    z-index: 2;
+    position: relative;
+    padding: 2rem 0 1rem 0;
     text-align: center;
 }
 
-header h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 2.5rem;
+header h1.glow {
+    font-size: 2.8rem;
+    color: var(--primary);
+    text-shadow: var(--glow);
+    letter-spacing: 2px;
+    margin-bottom: 0.5rem;
+}
+
+nav {
+    margin: 1rem 0 0 0;
 }
 
 nav a {
-    color: #fff;
+    color: var(--accent);
     text-decoration: none;
-    margin: 0 1rem;
-    font-weight: 500;
+    margin: 0 1.2rem;
+    font-weight: 700;
+    font-size: 1.1rem;
     transition: color 0.2s;
 }
 
 nav a:hover {
-    color: #ffd700;
+    color: var(--primary);
 }
 
 main {
-    max-width: 800px;
-    margin: 2rem auto;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+    z-index: 2;
+    position: relative;
+    max-width: 700px;
+    margin: 2rem auto 0 auto;
     padding: 2rem;
+    background: var(--card);
+    border-radius: 1.2rem;
+    box-shadow: var(--shadow);
 }
 
-section {
-    margin-bottom: 2rem;
+.section {
+    margin-bottom: 2.5rem;
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s, transform 0.8s;
+}
+
+.section.visible {
+    opacity: 1;
+    transform: none;
+}
+
+.features-list {
+    list-style: none;
+    padding: 0;
+    margin: 1.2rem 0 0 0;
+}
+
+.features-list li {
+    background: #1e2233cc;
+    margin: 0.5rem 0;
+    padding: 0.8rem 1.2rem;
+    border-radius: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 1.08rem;
+    box-shadow: 0 2px 8px #0002;
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+
+.author-card {
+    display: flex;
+    align-items: center;
+    background: #1e2233cc;
+    border-radius: 0.7rem;
+    padding: 1rem;
+    margin-top: 1.2rem;
+    box-shadow: 0 2px 8px #0002;
+    gap: 1.2rem;
+}
+
+.author-img {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 12px var(--primary);
+}
+
+.author-card h3 {
+    margin: 0 0 0.2rem 0;
+    color: var(--primary);
+}
+
+.author-card a {
+    color: var(--accent);
+    text-decoration: underline;
+    font-size: 0.98rem;
+}
+
+.author-card a:hover {
+    color: var(--primary);
+}
+
+.cta {
+    background: var(--primary);
+    color: #181c24;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.7rem 2.2rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-top: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0 2px 12px #00e6d055;
+    transition: background 0.2s, color 0.2s;
+}
+
+.cta:hover {
+    background: var(--accent);
+    color: #23283a;
 }
 
 form {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.7rem;
+    margin-top: 1rem;
 }
 
-input,
-textarea {
-    padding: 0.5rem;
-    border: 1px solid #bbb;
-    border-radius: 4px;
+form label {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+form input,
+form textarea {
+    background: #23283a;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    padding: 0.6rem;
     font-size: 1rem;
+    font-family: var(--font-main);
+    resize: none;
 }
 
-button {
-    background: #2d3e50;
-    color: #fff;
+form button[type="submit"] {
+    background: var(--primary);
+    color: #181c24;
     border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
-    font-size: 1rem;
+    border-radius: 0.4rem;
+    padding: 0.7rem 1.5rem;
+    font-size: 1.05rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.2s;
+    margin-top: 0.5rem;
+    box-shadow: 0 2px 8px #00e6d055;
+    transition: background 0.2s, color 0.2s;
 }
 
-button:hover {
-    background: #1a2533;
+form button[type="submit"]:hover {
+    background: var(--accent);
+    color: #23283a;
+}
+
+#formStatus {
+    margin-top: 0.5rem;
+    font-size: 0.98rem;
+    color: var(--primary);
+    min-height: 1.2em;
 }
 
 footer {
+    z-index: 2;
+    position: relative;
     text-align: center;
-    padding: 1rem 0;
-    background: #e9ecef;
-    color: #555;
-    position: fixed;
-    width: 100%;
-    bottom: 0;
-    left: 0;
+    margin: 2.5rem 0 0 0;
+    color: var(--text-muted);
+    font-size: 1.05rem;
 }
 
-@media (max-width: 600px) {
+footer .glow {
+    color: var(--primary);
+    text-shadow: var(--glow);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    background: #23283a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 4px;
+}
+
+@media (max-width: 800px) {
     main {
         padding: 1rem;
     }
 
-    header h1 {
-        font-size: 1.5rem;
+    .author-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
     }
 }

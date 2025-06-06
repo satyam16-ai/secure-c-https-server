@@ -3,40 +3,92 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Welcome to My HTTPS Server</title>
+    <title>Secure C HTTPS Server</title>
     <link rel="stylesheet" href="style.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;700&family=Montserrat:wght@700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
+    <div class="background-anim"></div>
     <header>
-      <h1>Welcome to My Secure Website!</h1>
+      <h1 class="glow">Secure C HTTPS Server</h1>
       <nav>
         <a href="#home">Home</a>
+        <a href="#features">Features</a>
         <a href="#about">About</a>
         <a href="#contact">Contact</a>
       </nav>
     </header>
     <main>
-      <section id="home">
-        <h2>Home</h2>
-        <p>This website is served securely using your custom C HTTPS server.</p>
+      <section id="home" class="section fade-in">
+        <h2>Welcome</h2>
+        <p>
+          This blazing-fast, production-grade HTTPS server is written in C,
+          using OpenSSL for secure connections. Serve static files, APIs,
+          WebSockets, and CGI scripts—all with robust authentication and
+          logging.
+        </p>
+        <button class="cta" onclick="scrollToSection('features')">
+          See Features ↓
+        </button>
       </section>
-      <section id="about">
-        <h2>About</h2>
-        <p>Built with C, OpenSSL, and love. You can add more content here!</p>
+      <section id="features" class="section fade-in">
+        <h2>Features</h2>
+        <ul class="features-list">
+          <li>🔒 <b>SSL/TLS</b> via OpenSSL</li>
+          <li>⚡ <b>Ultra-fast</b> static file serving</li>
+          <li>🧩 <b>REST API</b> & WebSocket support</li>
+          <li>🔑 <b>HTTP Basic Authentication</b></li>
+          <li>📝 <b>CGI script execution</b></li>
+          <li>📜 <b>Configurable</b> via <code>server.conf</code></li>
+          <li>📊 <b>Access & error logging</b></li>
+          <li>🧵 <b>Multi-threaded</b> for high concurrency</li>
+        </ul>
       </section>
-      <section id="contact">
+      <section id="about" class="section fade-in">
+        <h2>About This Project</h2>
+        <p>
+          Built from scratch in C for maximum performance and security. Designed
+          for developers who want full control over their web server stack, with
+          modern features and a clean, extensible codebase.
+        </p>
+        <div class="author-card">
+          <img
+            src="https://avatars.githubusercontent.com/u/106501796?v=4"
+            alt="Author"
+            class="author-img"
+          />
+          <div>
+            <h3>satyam16-ai</h3>
+            <p>Open-source enthusiast & systems programmer</p>
+            <a
+              href="https://github.com/satyam16-ai/secure-c-https-server"
+              target="_blank"
+              rel="noopener"
+              >View on GitHub</a
+            >
+          </div>
+        </div>
+      </section>
+      <section id="contact" class="section fade-in">
         <h2>Contact</h2>
-        <form>
+        <form id="contactForm" autocomplete="off">
           <label for="name">Name:</label>
           <input type="text" id="name" name="name" required />
           <label for="message">Message:</label>
           <textarea id="message" name="message" required></textarea>
           <button type="submit">Send</button>
+          <div id="formStatus"></div>
         </form>
       </section>
     </main>
     <footer>
-      <p>&copy; 2025 My HTTPS Server. All rights reserved.</p>
+      <p>
+        &copy; 2025 <span class="glow">Secure C HTTPS Server</span>. All rights
+        reserved.
+      </p>
     </footer>
     <script src="app.js"></script>
   </body>
