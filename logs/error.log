@@ -1,0 +1,61 @@
+[2025-06-06 16:21:58] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 16:21:58] src/main.c:138: Failed to initialize server: dummy
+[2025-06-06 16:23:31] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 16:23:31] src/main.c:138: Failed to initialize server: dummy
+[2025-06-06 20:50:06] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 20:50:06] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 20:52:46] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 20:52:46] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 20:53:00] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 20:53:00] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 20:53:08] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 20:53:23] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 20:53:23] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 20:55:00] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 20:55:00] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 20:56:09] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 20:56:09] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 20:56:19] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 20:56:19] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 21:00:33] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:00:33] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:00:41] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:01:19] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:01:19] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:01:19] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:02:03] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 21:02:03] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 21:02:22] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 21:02:22] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 21:04:05] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 21:04:05] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 21:08:15] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 21:08:15] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 21:11:34] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:11:34] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:11:42] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:15:20] src/server.c:45: Failed to bind to port 8080: Address already in use
+[2025-06-06 21:15:20] src/main.c:148: Failed to initialize server: dummy
+[2025-06-06 21:17:20] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:17:20] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:18:57] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:20:42] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:20:42] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:20:42] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:21:09] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:21:18] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:21:25] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:21:39] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:21:56] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:29:55] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:30:52] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:31:58] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:32:00] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:32:21] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 21:32:21] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 22:20:13] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 22:20:13] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 22:20:14] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 22:36:14] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 22:36:14] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
+[2025-06-06 22:36:23] src/server.c:143: SSL accept failed for 127.0.0.1 (errno=0): Success
