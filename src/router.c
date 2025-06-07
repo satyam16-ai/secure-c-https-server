@@ -8,6 +8,9 @@
 #include <stdio.h>
 #include <syslog.h>
 #include <strings.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 // Route handler function type
 typedef int (*route_handler_t)(http_request_t *req, http_response_t *resp);
@@ -32,6 +35,8 @@ static const route_t routes[] = {
     {"/status", HTTP_GET, handle_status},
     {"/api", HTTP_GET, handle_api},
     {"/api", HTTP_POST, handle_api},
+    {"/api", HTTP_PUT, handle_api},
+    {"/api", HTTP_DELETE, handle_api},
     {"/ws", HTTP_GET, handle_websocket},
     {NULL, HTTP_UNKNOWN, handle_static} // Default handler
 };
@@ -226,15 +231,190 @@ static int handle_status(http_request_t *req, http_response_t *resp)
     return 0;
 }
 
+// Static in-memory data for API demo
+static int api_counter = 0;
+static char api_data[256] = "{\"message\":\"Hello, API!\"}";
+
+// Save uploaded file to uploads/ directory
+static int save_uploaded_file(const char *filename, const char *data, size_t len)
+{
+    struct stat st = {0};
+    if (stat("uploads", &st) == -1)
+    {
+        mkdir("uploads", 0700);
+    }
+    char path[512];
+    snprintf(path, sizeof(path), "uploads/%s", filename);
+    FILE *fp = fopen(path, "wb");
+    if (!fp)
+        return -1;
+    fwrite(data, 1, len, fp);
+    fclose(fp);
+    return 0;
+}
+
 // Handle API requests
 static int handle_api(http_request_t *req, http_response_t *resp)
 {
-    (void)req;
-    // TODO: Implement API endpoints
-    resp->status = HTTP_501_NOT_IMPLEMENTED;
-    resp->body = "API not implemented";
-    resp->body_length = strlen(resp->body);
-    return 0;
+    // Set Content-Type to application/json
+    strncpy(resp->headers[resp->header_count].name, "Content-Type", sizeof(resp->headers[0].name) - 1);
+    strncpy(resp->headers[resp->header_count].value, "application/json", sizeof(resp->headers[0].value) - 1);
+    resp->header_count++;
+
+    // Check for file upload (multipart/form-data)
+    if (req->method == HTTP_POST && req->body && req->body_length > 0)
+    {
+        const char *content_type = NULL;
+        for (size_t i = 0; i < req->header_count; i++)
+        {
+            if (strcasecmp(req->headers[i].name, "Content-Type") == 0)
+            {
+                content_type = req->headers[i].value;
+                break;
+            }
+        }
+        if (content_type && strncmp(content_type, "multipart/form-data", 19) == 0)
+        {
+            // Extract boundary
+            const char *b = strstr(content_type, "boundary=");
+            if (!b)
+            {
+                resp->status = HTTP_400_BAD_REQUEST;
+                resp->body = "{\"error\":\"Missing boundary\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            b += 9;
+            char boundary[128];
+            snprintf(boundary, sizeof(boundary), "--%s", b);
+            // Find file part
+            char *file_start = strstr(req->body, "Content-Disposition: form-data;");
+            if (!file_start)
+            {
+                resp->status = HTTP_400_BAD_REQUEST;
+                resp->body = "{\"error\":\"No file part\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            char *name_pos = strstr(file_start, "name=");
+            char *filename_pos = strstr(file_start, "filename=");
+            if (!filename_pos)
+            {
+                resp->status = HTTP_400_BAD_REQUEST;
+                resp->body = "{\"error\":\"No filename\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            filename_pos += 9;
+            char *filename_end = strchr(filename_pos, '"');
+            if (!filename_end)
+            {
+                resp->status = HTTP_400_BAD_REQUEST;
+                resp->body = "{\"error\":\"Malformed filename\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            char filename[128];
+            size_t fn_len = filename_end - filename_pos;
+            if (fn_len >= sizeof(filename))
+                fn_len = sizeof(filename) - 1;
+            strncpy(filename, filename_pos, fn_len);
+            filename[fn_len] = '\0';
+            // Find start of file data (after 2x CRLF)
+            char *data_start = strstr(filename_end, "\r\n\r\n");
+            if (!data_start)
+            {
+                resp->status = HTTP_400_BAD_REQUEST;
+                resp->body = "{\"error\":\"Malformed body\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            data_start += 4;
+            // Find end of file data (boundary)
+            char *data_end = strstr(data_start, boundary);
+            if (!data_end)
+            {
+                resp->status = HTTP_400_BAD_REQUEST;
+                resp->body = "{\"error\":\"Malformed multipart\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            size_t file_len = data_end - data_start;
+            // Save file
+            if (save_uploaded_file(filename, data_start, file_len) == 0)
+            {
+                resp->status = HTTP_200_OK;
+                resp->body = "{\"success\":true,\"filename\":\"";
+                size_t blen = strlen(resp->body);
+                snprintf(resp->body + blen, 256 - blen, "%s\"}", filename);
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            else
+            {
+                resp->status = HTTP_500_INTERNAL_SERVER_ERROR;
+                resp->body = "{\"error\":\"Failed to save file\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+        }
+    }
+    else if (req->method == HTTP_GET)
+    {
+        // Return current data
+        resp->status = HTTP_200_OK;
+        resp->body = api_data;
+        resp->body_length = strlen(api_data);
+        return 0;
+    }
+    else if (req->method == HTTP_POST || req->method == HTTP_PUT)
+    {
+        // Accept JSON body and update api_data (demo: just copy body if valid)
+        if (req->body && req->body_length > 0 && req->body_length < sizeof(api_data) - 1)
+        {
+            // Very basic JSON validation: must start with '{' and end with '}'
+            if (req->body[0] == '{' && req->body[req->body_length - 1] == '}')
+            {
+                strncpy(api_data, req->body, req->body_length);
+                api_data[req->body_length] = '\0';
+                api_counter++;
+                resp->status = HTTP_200_OK;
+                resp->body = api_data;
+                resp->body_length = strlen(api_data);
+                return 0;
+            }
+            else
+            {
+                resp->status = HTTP_400_BAD_REQUEST;
+                resp->body = "{\"error\":\"Invalid JSON\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+        }
+        else
+        {
+            resp->status = HTTP_400_BAD_REQUEST;
+            resp->body = "{\"error\":\"Missing JSON body\"}";
+            resp->body_length = strlen(resp->body);
+            return 0;
+        }
+    }
+    else if (req->method == HTTP_DELETE)
+    {
+        // Clear the data
+        strcpy(api_data, "{\"message\":\"Deleted\"}");
+        resp->status = HTTP_200_OK;
+        resp->body = api_data;
+        resp->body_length = strlen(api_data);
+        return 0;
+    }
+    else
+    {
+        resp->status = HTTP_405_METHOD_NOT_ALLOWED;
+        resp->body = "{\"error\":\"Method Not Allowed\"}";
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
 }
 
 // Handle WebSocket requests

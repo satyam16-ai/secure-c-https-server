@@ -92,6 +92,10 @@ int parse_http_request(const char *buffer, size_t len, http_request_t *req)
         req->method = HTTP_GET;
     else if (strcmp(method, "POST") == 0)
         req->method = HTTP_POST;
+    else if (strcmp(method, "PUT") == 0)
+        req->method = HTTP_PUT;
+    else if (strcmp(method, "DELETE") == 0)
+        req->method = HTTP_DELETE;
     else if (strcmp(method, "HEAD") == 0)
         req->method = HTTP_HEAD;
     else
