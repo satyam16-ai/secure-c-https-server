@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
     // Debug print loaded credentials
     printf("Loaded user: '%s', pass: '%s'\n", config.auth_user, config.auth_pass);
 
-    // Set up signal handlers
+    // Set up signal handlers for graceful shutdown
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 

@@ -45,6 +45,8 @@ static const route_t routes[] = {
     {"/api", HTTP_DELETE, handle_api},
     {"/ws", HTTP_GET, handle_websocket},
     {"/proxy", HTTP_GET, handle_proxy},
+    {"/metrics", HTTP_GET, handle_metrics},
+    {"/metrics.html", HTTP_GET, handle_static},
     {NULL, HTTP_UNKNOWN, handle_static} // Default handler
 };
 
@@ -239,6 +241,55 @@ static int handle_static(http_request_t *req, http_response_t *resp)
         resp->header_count++;
     }
 
+    // --- ACL check for static files ---
+    // For demo: extract user from basic auth if present
+    char user[64] = "";
+    for (size_t i = 0; i < req->header_count; i++)
+    {
+        if (strcasecmp(req->headers[i].name, "Authorization") == 0)
+        {
+            const char *prefix = "Basic ";
+            if (strncmp(req->headers[i].value, prefix, strlen(prefix)) == 0)
+            {
+                const char *b64 = req->headers[i].value + strlen(prefix);
+                unsigned char decoded[256] = {0};
+                int decoded_len = EVP_DecodeBlock(decoded, (const unsigned char *)b64, strlen(b64));
+                if (decoded_len > 0)
+                {
+                    char *colon = strchr((char *)decoded, ':');
+                    if (colon)
+                    {
+                        *colon = '\0';
+                        strncpy(user, (char *)decoded, sizeof(user) - 1);
+                        user[sizeof(user) - 1] = '\0';
+                    }
+                }
+            }
+        }
+    }
+    if (!acl_check(req, user))
+    {
+        resp->status = HTTP_403_FORBIDDEN;
+        resp->body = "Forbidden by ACL";
+        resp->body_length = strlen(resp->body);
+        // Gzip forbidden response if client supports it
+        int should_gzip = client_accepts_gzip(req);
+        if (should_gzip && resp->body && resp->body_length > 0)
+        {
+            size_t gz_len = 0;
+            char *gzipped = gzip_compress(resp->body, resp->body_length, &gz_len);
+            if (gzipped && gz_len > 0)
+            {
+                resp->body = gzipped;
+                resp->body_length = gz_len;
+                strncpy(resp->headers[resp->header_count].name, "Content-Encoding", sizeof(resp->headers[0].name) - 1);
+                strncpy(resp->headers[resp->header_count].value, "gzip", sizeof(resp->headers[0].value) - 1);
+                resp->header_count++;
+            }
+        }
+        return 0;
+    }
+
     return 0;
 }
 
@@ -353,6 +404,20 @@ static int handle_proxy(http_request_t *req, http_response_t *resp)
     resp->status = HTTP_200_OK;
     resp->body = proxy_buf;
     resp->body_length = strlen(proxy_buf);
+    // Gzip compress proxy response if client supports it
+    if (client_accepts_gzip(req))
+    {
+        size_t gz_len = 0;
+        char *gzipped = gzip_compress(proxy_buf, strlen(proxy_buf), &gz_len);
+        if (gzipped && gz_len > 0)
+        {
+            resp->body = gzipped;
+            resp->body_length = gz_len;
+            strncpy(resp->headers[resp->header_count].name, "Content-Encoding", sizeof(resp->headers[0].name) - 1);
+            strncpy(resp->headers[resp->header_count].value, "gzip", sizeof(resp->headers[0].value) - 1);
+            resp->header_count++;
+        }
+    }
     strncpy(resp->headers[resp->header_count].name, "Content-Type", sizeof(resp->headers[0].name) - 1);
     strncpy(resp->headers[resp->header_count].value, "application/json", sizeof(resp->headers[0].value) - 1);
     resp->header_count++;
@@ -413,6 +478,76 @@ static int handle_api(http_request_t *req, http_response_t *resp)
     strncpy(resp->headers[resp->header_count].value, "application/json", sizeof(resp->headers[0].value) - 1);
     resp->header_count++;
     add_cors_headers(resp);
+
+    // --- ACL check for API endpoints ---
+    char user[64] = "";
+    // Try session cookie (demo: only one session, user is 'demo_user')
+    if (check_session_cookie(req))
+    {
+        strncpy(user, "demo_user", sizeof(user) - 1);
+        user[sizeof(user) - 1] = '\0';
+    }
+    else
+    {
+        // Try JWT (demo: only one user)
+        for (size_t i = 0; i < req->header_count; i++)
+        {
+            if (strcasecmp(req->headers[i].name, "Authorization") == 0 && strstr(req->headers[i].value, "Bearer ") == req->headers[i].value)
+            {
+                if (check_jwt(req->headers[i].value + 7))
+                {
+                    strncpy(user, "demo_user", sizeof(user) - 1);
+                    user[sizeof(user) - 1] = '\0';
+                }
+            }
+        }
+        // Try basic auth
+        for (size_t i = 0; i < req->header_count && !*user; i++)
+        {
+            if (strcasecmp(req->headers[i].name, "Authorization") == 0)
+            {
+                const char *prefix = "Basic ";
+                if (strncmp(req->headers[i].value, prefix, strlen(prefix)) == 0)
+                {
+                    const char *b64 = req->headers[i].value + strlen(prefix);
+                    unsigned char decoded[256] = {0};
+                    int decoded_len = EVP_DecodeBlock(decoded, (const unsigned char *)b64, strlen(b64));
+                    if (decoded_len > 0)
+                    {
+                        char *colon = strchr((char *)decoded, ':');
+                        if (colon)
+                        {
+                            *colon = '\0';
+                            strncpy(user, (char *)decoded, sizeof(user) - 1);
+                            user[sizeof(user) - 1] = '\0';
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (!acl_check(req, user))
+    {
+        resp->status = HTTP_403_FORBIDDEN;
+        resp->body = "{\"error\":\"Forbidden by ACL\"}";
+        resp->body_length = strlen(resp->body);
+        // Gzip forbidden response if client supports it
+        int should_gzip = client_accepts_gzip(req);
+        if (should_gzip && resp->body && resp->body_length > 0)
+        {
+            size_t gz_len = 0;
+            char *gzipped = gzip_compress(resp->body, resp->body_length, &gz_len);
+            if (gzipped && gz_len > 0)
+            {
+                resp->body = gzipped;
+                resp->body_length = gz_len;
+                strncpy(resp->headers[resp->header_count].name, "Content-Encoding", sizeof(resp->headers[0].name) - 1);
+                strncpy(resp->headers[resp->header_count].value, "gzip", sizeof(resp->headers[0].value) - 1);
+                resp->header_count++;
+            }
+        }
+        return 0;
+    }
 
     // --- Gzip compress API response if client supports it (applied before return for all JSON bodies) ---
     int should_gzip = client_accepts_gzip(req);
@@ -765,6 +900,13 @@ static int handle_cgi(http_request_t *req, http_response_t *resp)
 // Handle HTTP request
 int router_handle_request(http_request_t *req, http_response_t *resp)
 {
+    static time_t server_start_time = 0;
+    static unsigned long request_count = 0;
+
+    if (server_start_time == 0)
+        server_start_time = time(NULL);
+    request_count++;
+
     const route_t *route;
 
     // Find matching route
@@ -920,5 +1062,84 @@ static int check_jwt(const char *token)
     // For demo, just check exp manually
     if (strstr(b64_payload, "exp"))
         return 1;
+    return 0;
+}
+
+// --- ACL structures and helpers ---
+typedef struct
+{
+    const char *path_prefix;   // e.g. "/api/protected" or "/static/secret"
+    http_method_t method;      // HTTP_GET, HTTP_POST, etc. or HTTP_UNKNOWN for any
+    const char *required_user; // NULL for any authenticated user, or username
+} acl_rule_t;
+
+// Example ACL rules (expand as needed)
+static const acl_rule_t acl_rules[] = {
+    {"/api/protected", HTTP_UNKNOWN, NULL}, // Any authenticated user
+    {"/static/secret", HTTP_GET, "admin"},  // Only admin can GET
+    {NULL, HTTP_UNKNOWN, NULL}};
+
+// Returns 1 if allowed, 0 if denied
+static int acl_check(http_request_t *req, const char *user)
+{
+    for (const acl_rule_t *rule = acl_rules; rule->path_prefix != NULL; ++rule)
+    {
+        if (strncmp(req->path, rule->path_prefix, strlen(rule->path_prefix)) == 0 &&
+            (rule->method == HTTP_UNKNOWN || rule->method == req->method))
+        {
+            if (rule->required_user == NULL)
+            {
+                // Any authenticated user
+                if (user && *user)
+                    return 1;
+                return 0;
+            }
+            else
+            {
+                if (user && strcmp(user, rule->required_user) == 0)
+                    return 1;
+                return 0;
+            }
+        }
+    }
+    return 1; // Allow if no rule matches
+}
+
+// Helper to get memory usage (Linux only, returns RSS in KB)
+static long get_memory_usage_kb(void)
+{
+    FILE *f = fopen("/proc/self/status", "r");
+    if (!f)
+        return -1;
+    char line[256];
+    long kb = -1;
+    while (fgets(line, sizeof(line), f))
+    {
+        if (strncmp(line, "VmRSS:", 6) == 0)
+        {
+            sscanf(line + 6, "%ld", &kb);
+            break;
+        }
+    }
+    fclose(f);
+    return kb;
+}
+
+// Metrics handler
+static int handle_metrics(http_request_t *req, http_response_t *resp)
+{
+    time_t now = time(NULL);
+    long uptime = (long)(now - server_start_time);
+    long mem_kb = get_memory_usage_kb();
+    char metrics_json[512];
+    snprintf(metrics_json, sizeof(metrics_json),
+             "{\"uptime\":%ld,\"requests\":%lu,\"memory_kb\":%ld}",
+             uptime, request_count, mem_kb);
+    resp->status = HTTP_200_OK;
+    resp->body = strdup(metrics_json);
+    resp->body_length = strlen(resp->body);
+    strncpy(resp->headers[resp->header_count].name, "Content-Type", sizeof(resp->headers[0].name) - 1);
+    strncpy(resp->headers[resp->header_count].value, "application/json", sizeof(resp->headers[0].value) - 1);
+    resp->header_count++;
     return 0;
 }

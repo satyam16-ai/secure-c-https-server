@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Server Metrics Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: #181c24;
+        color: #fff;
+        margin: 0;
+      }
+      .dashboard {
+        max-width: 600px;
+        margin: 40px auto;
+        background: #23283a;
+        border-radius: 12px;
+        box-shadow: 0 4px 24px #0008;
+        padding: 32px;
+      }
+      h1 {
+        text-align: center;
+        font-size: 2.2em;
+        margin-bottom: 0.5em;
+      }
+      .metrics {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5em;
+      }
+      .metric {
+        background: #1a1e2a;
+        border-radius: 8px;
+        padding: 1.2em 1.5em;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 1.2em;
+      }
+      .metric-label {
+        color: #8ecae6;
+        font-weight: 500;
+      }
+      .metric-value {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #ffd166;
+      }
+      .refresh-btn {
+        display: block;
+        margin: 2em auto 0;
+        background: #2196f3;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 0.7em 2em;
+        font-size: 1.1em;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .refresh-btn:hover {
+        background: #1769aa;
+      }
+      @media (max-width: 700px) {
+        .dashboard {
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="dashboard">
+      <h1>Server Metrics</h1>
+      <div class="metrics">
+        <div class="metric">
+          <span class="metric-label">Uptime</span
+          ><span class="metric-value" id="uptime">...</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Total Requests</span
+          ><span class="metric-value" id="requests">...</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Memory Usage</span
+          ><span class="metric-value" id="memory">...</span>
+        </div>
+      </div>
+      <button class="refresh-btn" onclick="fetchMetrics()">Refresh</button>
+    </div>
+    <script>
+      function formatUptime(seconds) {
+        const d = Math.floor(seconds / 86400);
+        const h = Math.floor((seconds % 86400) / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return `${d}d ${h}h ${m}m ${s}s`;
+      }
+      async function fetchMetrics() {
+        const res = await fetch("/metrics");
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("uptime").textContent = formatUptime(
+          data.uptime
+        );
+        document.getElementById("requests").textContent =
+          data.requests.toLocaleString();
+        document.getElementById("memory").textContent =
+          data.memory_kb > 0 ? `${data.memory_kb.toLocaleString()} KB` : "N/A";
+      }
+      fetchMetrics();
+      setInterval(fetchMetrics, 5000);
+    </script>
+  </body>
+</html>
