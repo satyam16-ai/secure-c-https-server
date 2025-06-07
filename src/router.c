@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <curl/curl.h>
+#include <zlib.h>
 
 // Route handler function type
 typedef int (*route_handler_t)(http_request_t *req, http_response_t *resp);
@@ -42,6 +44,7 @@ static const route_t routes[] = {
     {"/api", HTTP_PUT, handle_api},
     {"/api", HTTP_DELETE, handle_api},
     {"/ws", HTTP_GET, handle_websocket},
+    {"/proxy", HTTP_GET, handle_proxy},
     {NULL, HTTP_UNKNOWN, handle_static} // Default handler
 };
 
@@ -199,10 +202,31 @@ static int handle_static(http_request_t *req, http_response_t *resp)
         return 0;
     }
 
-    // Set response
-    resp->status = HTTP_200_OK;
-    resp->body = content;
-    resp->body_length = content_size;
+    // Gzip compress if client supports it
+    if (client_accepts_gzip(req))
+    {
+        size_t gz_len = 0;
+        char *gzipped = gzip_compress(content, content_size, &gz_len);
+        if (gzipped && gz_len > 0)
+        {
+            free(content);
+            resp->body = gzipped;
+            resp->body_length = gz_len;
+            strncpy(resp->headers[resp->header_count].name, "Content-Encoding", sizeof(resp->headers[0].name) - 1);
+            strncpy(resp->headers[resp->header_count].value, "gzip", sizeof(resp->headers[0].value) - 1);
+            resp->header_count++;
+        }
+        else
+        {
+            resp->body = content;
+            resp->body_length = content_size;
+        }
+    }
+    else
+    {
+        resp->body = content;
+        resp->body_length = content_size;
+    }
 
     // Set content type
     mime_type = mime_get_type(filepath);
@@ -261,6 +285,126 @@ static int save_uploaded_file(const char *filename, const char *data, size_t len
     return 0;
 }
 
+// Add CORS headers for API endpoints
+static void add_cors_headers(http_response_t *resp)
+{
+    strncpy(resp->headers[resp->header_count].name, "Access-Control-Allow-Origin", sizeof(resp->headers[0].name) - 1);
+    strncpy(resp->headers[resp->header_count].value, "*", sizeof(resp->headers[0].value) - 1);
+    resp->header_count++;
+    strncpy(resp->headers[resp->header_count].name, "Access-Control-Allow-Methods", sizeof(resp->headers[0].name) - 1);
+    strncpy(resp->headers[resp->header_count].value, "GET, POST, PUT, DELETE, OPTIONS", sizeof(resp->headers[0].value) - 1);
+    resp->header_count++;
+    strncpy(resp->headers[resp->header_count].name, "Access-Control-Allow-Headers", sizeof(resp->headers[0].name) - 1);
+    strncpy(resp->headers[resp->header_count].value, "Content-Type, Authorization", sizeof(resp->headers[0].value) - 1);
+    resp->header_count++;
+}
+
+// Reverse proxy handler (GET only, demo)
+static size_t proxy_write_cb(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    strncat((char *)userp, (char *)contents, realsize);
+    return realsize;
+}
+
+static int handle_proxy(http_request_t *req, http_response_t *resp)
+{
+    // Parse ?url= from req->path
+    const char *q = strchr(req->path, '?');
+    if (!q || !strstr(q, "url="))
+    {
+        resp->status = HTTP_400_BAD_REQUEST;
+        resp->body = "{\"error\":\"Missing url param\"}";
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
+    const char *url = strstr(q, "url=") + 4;
+    char backend_url[512] = "";
+    sscanf(url, "%511[^&]", backend_url);
+    if (!*backend_url)
+    {
+        resp->status = HTTP_400_BAD_REQUEST;
+        resp->body = "{\"error\":\"Empty url param\"}";
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
+    CURL *curl = curl_easy_init();
+    if (!curl)
+    {
+        resp->status = HTTP_500_INTERNAL_SERVER_ERROR;
+        resp->body = "{\"error\":\"CURL init failed\"}";
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
+    static char proxy_buf[8192];
+    proxy_buf[0] = '\0';
+    curl_easy_setopt(curl, CURLOPT_URL, backend_url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, proxy_write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, proxy_buf);
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    if (res != CURLE_OK)
+    {
+        resp->status = HTTP_502_BAD_GATEWAY;
+        resp->body = "{\"error\":\"Proxy failed\"}";
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
+    resp->status = HTTP_200_OK;
+    resp->body = proxy_buf;
+    resp->body_length = strlen(proxy_buf);
+    strncpy(resp->headers[resp->header_count].name, "Content-Type", sizeof(resp->headers[0].name) - 1);
+    strncpy(resp->headers[resp->header_count].value, "application/json", sizeof(resp->headers[0].value) - 1);
+    resp->header_count++;
+    add_cors_headers(resp);
+    return 0;
+}
+
+// Check if client supports gzip
+static int client_accepts_gzip(http_request_t *req)
+{
+    for (size_t i = 0; i < req->header_count; i++)
+    {
+        if (strcasecmp(req->headers[i].name, "Accept-Encoding") == 0 && strstr(req->headers[i].value, "gzip"))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Gzip-compress a buffer. Returns malloc'd buffer and sets out_len. Caller must free.
+static char *gzip_compress(const char *data, size_t data_len, size_t *out_len)
+{
+    z_stream zs;
+    memset(&zs, 0, sizeof(zs));
+    if (deflateInit2(&zs, Z_BEST_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+    {
+        return NULL;
+    }
+    size_t max_compressed = data_len + (data_len / 10) + 64;
+    char *out = malloc(max_compressed);
+    if (!out)
+    {
+        deflateEnd(&zs);
+        return NULL;
+    }
+    zs.next_in = (Bytef *)data;
+    zs.avail_in = data_len;
+    zs.next_out = (Bytef *)out;
+    zs.avail_out = max_compressed;
+    int ret = deflate(&zs, Z_FINISH);
+    if (ret != Z_STREAM_END)
+    {
+        free(out);
+        deflateEnd(&zs);
+        return NULL;
+    }
+    *out_len = zs.total_out;
+    deflateEnd(&zs);
+    return out;
+}
+
 // Handle API requests
 static int handle_api(http_request_t *req, http_response_t *resp)
 {
@@ -268,6 +412,27 @@ static int handle_api(http_request_t *req, http_response_t *resp)
     strncpy(resp->headers[resp->header_count].name, "Content-Type", sizeof(resp->headers[0].name) - 1);
     strncpy(resp->headers[resp->header_count].value, "application/json", sizeof(resp->headers[0].value) - 1);
     resp->header_count++;
+    add_cors_headers(resp);
+
+    // --- Gzip compress API response if client supports it (applied before return for all JSON bodies) ---
+    int should_gzip = client_accepts_gzip(req);
+    char *gzipped = NULL;
+    size_t gz_len = 0;
+#define MAYBE_GZIP_BODY                                                                                                 \
+    {                                                                                                                   \
+        if (should_gzip && resp->body && resp->body_length > 0)                                                         \
+        {                                                                                                               \
+            gzipped = gzip_compress(resp->body, resp->body_length, &gz_len);                                            \
+            if (gzipped && gz_len > 0)                                                                                  \
+            {                                                                                                           \
+                resp->body = gzipped;                                                                                   \
+                resp->body_length = gz_len;                                                                             \
+                strncpy(resp->headers[resp->header_count].name, "Content-Encoding", sizeof(resp->headers[0].name) - 1); \
+                strncpy(resp->headers[resp->header_count].value, "gzip", sizeof(resp->headers[0].value) - 1);           \
+                resp->header_count++;                                                                                   \
+            }                                                                                                           \
+        }                                                                                                               \
+    }
 
     // Demo login endpoint: POST /api/login with {"user":"...","pass":"...","auth":"session"|"jwt"}
     if (req->method == HTTP_POST && req->body && req->body_length > 0 && strstr(req->path, "/api/login") != NULL)
@@ -286,6 +451,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
                 resp->status = HTTP_200_OK;
                 resp->body = "{\"login\":true,\"type\":\"session\"}";
                 resp->body_length = strlen(resp->body);
+                MAYBE_GZIP_BODY;
                 return 0;
             }
             else if (strstr(auth, "jwt"))
@@ -295,12 +461,14 @@ static int handle_api(http_request_t *req, http_response_t *resp)
                 resp->status = HTTP_200_OK;
                 resp->body = jwt;
                 resp->body_length = strlen(jwt);
+                MAYBE_GZIP_BODY;
                 return 0;
             }
         }
         resp->status = HTTP_400_BAD_REQUEST;
         resp->body = "{\"error\":\"Invalid login\"}";
         resp->body_length = strlen(resp->body);
+        MAYBE_GZIP_BODY;
         return 0;
     }
     // For protected endpoints, check session or JWT
@@ -325,11 +493,13 @@ static int handle_api(http_request_t *req, http_response_t *resp)
             resp->status = HTTP_401_UNAUTHORIZED;
             resp->body = "{\"error\":\"Unauthorized\"}";
             resp->body_length = strlen(resp->body);
+            MAYBE_GZIP_BODY;
             return 0;
         }
         resp->status = HTTP_200_OK;
         resp->body = "{\"protected\":true}";
         resp->body_length = strlen(resp->body);
+        MAYBE_GZIP_BODY;
         return 0;
     }
     // Check for file upload (multipart/form-data)
@@ -419,6 +589,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
                 size_t blen = strlen(resp->body);
                 snprintf(resp->body + blen, 256 - blen, "%s\"}", filename);
                 resp->body_length = strlen(resp->body);
+                MAYBE_GZIP_BODY;
                 return 0;
             }
             else
@@ -426,6 +597,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
                 resp->status = HTTP_500_INTERNAL_SERVER_ERROR;
                 resp->body = "{\"error\":\"Failed to save file\"}";
                 resp->body_length = strlen(resp->body);
+                MAYBE_GZIP_BODY;
                 return 0;
             }
         }
@@ -436,6 +608,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
         resp->status = HTTP_200_OK;
         resp->body = api_data;
         resp->body_length = strlen(api_data);
+        MAYBE_GZIP_BODY;
         return 0;
     }
     else if (req->method == HTTP_POST || req->method == HTTP_PUT)
@@ -452,6 +625,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
                 resp->status = HTTP_200_OK;
                 resp->body = api_data;
                 resp->body_length = strlen(api_data);
+                MAYBE_GZIP_BODY;
                 return 0;
             }
             else
@@ -459,6 +633,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
                 resp->status = HTTP_400_BAD_REQUEST;
                 resp->body = "{\"error\":\"Invalid JSON\"}";
                 resp->body_length = strlen(resp->body);
+                MAYBE_GZIP_BODY;
                 return 0;
             }
         }
@@ -467,6 +642,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
             resp->status = HTTP_400_BAD_REQUEST;
             resp->body = "{\"error\":\"Missing JSON body\"}";
             resp->body_length = strlen(resp->body);
+            MAYBE_GZIP_BODY;
             return 0;
         }
     }
@@ -477,6 +653,7 @@ static int handle_api(http_request_t *req, http_response_t *resp)
         resp->status = HTTP_200_OK;
         resp->body = api_data;
         resp->body_length = strlen(api_data);
+        MAYBE_GZIP_BODY;
         return 0;
     }
     else
@@ -484,8 +661,10 @@ static int handle_api(http_request_t *req, http_response_t *resp)
         resp->status = HTTP_405_METHOD_NOT_ALLOWED;
         resp->body = "{\"error\":\"Method Not Allowed\"}";
         resp->body_length = strlen(resp->body);
+        MAYBE_GZIP_BODY;
         return 0;
     }
+#undef MAYBE_GZIP_BODY
 }
 
 // Handle WebSocket requests
