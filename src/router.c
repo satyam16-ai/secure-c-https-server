@@ -11,6 +11,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <time.h>
+#include <stdlib.h>
+#include <openssl/rand.h>
+#include <openssl/sha.h>
 
 // Route handler function type
 typedef int (*route_handler_t)(http_request_t *req, http_response_t *resp);
@@ -42,6 +46,10 @@ static const route_t routes[] = {
 };
 
 extern server_config_t config;
+
+#define SESSION_COOKIE_NAME "SESSIONID"
+#define SESSION_TIMEOUT 1800           // 30 min
+#define JWT_SECRET "my_jwt_secret_key" // For demo only
 
 static int check_basic_auth(http_request_t *req)
 {
@@ -261,6 +269,69 @@ static int handle_api(http_request_t *req, http_response_t *resp)
     strncpy(resp->headers[resp->header_count].value, "application/json", sizeof(resp->headers[0].value) - 1);
     resp->header_count++;
 
+    // Demo login endpoint: POST /api/login with {"user":"...","pass":"...","auth":"session"|"jwt"}
+    if (req->method == HTTP_POST && req->body && req->body_length > 0 && strstr(req->path, "/api/login") != NULL)
+    {
+        // Parse user/pass/auth (demo: naive, not robust JSON)
+        const char *user = strstr(req->body, "user");
+        const char *pass = strstr(req->body, "pass");
+        const char *auth = strstr(req->body, "auth");
+        if (user && pass && auth)
+        {
+            if (strstr(auth, "session"))
+            {
+                generate_session_id(session_id, sizeof(session_id));
+                session_expiry = time(NULL) + SESSION_TIMEOUT;
+                set_session_cookie(resp, session_id);
+                resp->status = HTTP_200_OK;
+                resp->body = "{\"login\":true,\"type\":\"session\"}";
+                resp->body_length = strlen(resp->body);
+                return 0;
+            }
+            else if (strstr(auth, "jwt"))
+            {
+                static char jwt[512];
+                generate_jwt("demo_user", jwt, sizeof(jwt));
+                resp->status = HTTP_200_OK;
+                resp->body = jwt;
+                resp->body_length = strlen(jwt);
+                return 0;
+            }
+        }
+        resp->status = HTTP_400_BAD_REQUEST;
+        resp->body = "{\"error\":\"Invalid login\"}";
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
+    // For protected endpoints, check session or JWT
+    if (strstr(req->path, "/api/protected") != NULL)
+    {
+        int ok = 0;
+        // Check session cookie
+        if (check_session_cookie(req))
+            ok = 1;
+        // Check JWT in Authorization header
+        for (size_t i = 0; i < req->header_count; i++)
+        {
+            if (strcasecmp(req->headers[i].name, "Authorization") == 0 && strstr(req->headers[i].value, "Bearer ") == req->headers[i].value)
+            {
+                const char *jwt = req->headers[i].value + 7;
+                if (check_jwt(jwt))
+                    ok = 1;
+            }
+        }
+        if (!ok)
+        {
+            resp->status = HTTP_401_UNAUTHORIZED;
+            resp->body = "{\"error\":\"Unauthorized\"}";
+            resp->body_length = strlen(resp->body);
+            return 0;
+        }
+        resp->status = HTTP_200_OK;
+        resp->body = "{\"protected\":true}";
+        resp->body_length = strlen(resp->body);
+        return 0;
+    }
     // Check for file upload (multipart/form-data)
     if (req->method == HTTP_POST && req->body && req->body_length > 0)
     {
@@ -528,4 +599,147 @@ int router_handle_request(http_request_t *req, http_response_t *resp)
 
     // Call route handler
     return route->handler(req, resp);
+}
+
+// Simple session struct (demo: single session)
+static char session_id[65] = "";
+static time_t session_expiry = 0;
+
+#define SESSION_COOKIE_NAME "SESSIONID"
+#define SESSION_TIMEOUT 1800           // 30 min
+#define JWT_SECRET "my_jwt_secret_key" // For demo only
+
+// Generate a random session ID (hex string)
+static void generate_session_id(char *out, size_t len)
+{
+    unsigned char buf[32];
+    RAND_bytes(buf, sizeof(buf));
+    for (size_t i = 0; i < sizeof(buf) && i * 2 + 1 < len; i++)
+        sprintf(out + i * 2, "%02x", buf[i]);
+    out[sizeof(buf) * 2] = '\0';
+}
+
+// Set session cookie in response
+static void set_session_cookie(http_response_t *resp, const char *sid)
+{
+    char cookie[128];
+    snprintf(cookie, sizeof(cookie), "%s=%s; HttpOnly; Path=/; Max-Age=%d", SESSION_COOKIE_NAME, sid, SESSION_TIMEOUT);
+    strncpy(resp->headers[resp->header_count].name, "Set-Cookie", sizeof(resp->headers[0].name) - 1);
+    strncpy(resp->headers[resp->header_count].value, cookie, sizeof(resp->headers[0].value) - 1);
+    resp->header_count++;
+}
+
+// Check session cookie in request
+static int check_session_cookie(http_request_t *req)
+{
+    for (size_t i = 0; i < req->header_count; i++)
+    {
+        if (strcasecmp(req->headers[i].name, "Cookie") == 0)
+        {
+            const char *cookie = req->headers[i].value;
+            char *sid = strstr(cookie, SESSION_COOKIE_NAME "=");
+            if (sid)
+            {
+                sid += strlen(SESSION_COOKIE_NAME) + 1;
+                char *end = strchr(sid, ';');
+                char sid_val[65];
+                if (end)
+                {
+                    size_t n = end - sid;
+                    if (n > 64)
+                        n = 64;
+                    strncpy(sid_val, sid, n);
+                    sid_val[n] = '\0';
+                }
+                else
+                {
+                    strncpy(sid_val, sid, 64);
+                    sid_val[64] = '\0';
+                }
+                if (strcmp(sid_val, session_id) == 0 && time(NULL) < session_expiry)
+                {
+                    session_expiry = time(NULL) + SESSION_TIMEOUT; // refresh expiry
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+// JWT encode (base64 header.payload.signature, signature is SHA256 HMAC, demo: not secure)
+static void base64url_encode(const unsigned char *in, size_t inlen, char *out, size_t outlen)
+{
+    static const char tbl[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    size_t i, j;
+    for (i = 0, j = 0; i + 2 < inlen && j + 4 < outlen; i += 3, j += 4)
+    {
+        out[j] = tbl[(in[i] >> 2) & 0x3F];
+        out[j + 1] = tbl[((in[i] & 0x3) << 4) | ((in[i + 1] >> 4) & 0xF)];
+        out[j + 2] = tbl[((in[i + 1] & 0xF) << 2) | ((in[i + 2] >> 6) & 0x3)];
+        out[j + 3] = tbl[in[i + 2] & 0x3F];
+    }
+    if (i < inlen && j + 4 < outlen)
+    {
+        out[j] = tbl[(in[i] >> 2) & 0x3F];
+        if (i + 1 < inlen)
+        {
+            out[j + 1] = tbl[((in[i] & 0x3) << 4) | ((in[i + 1] >> 4) & 0xF)];
+            out[j + 2] = tbl[((in[i + 1] & 0xF) << 2)];
+            out[j + 3] = '=';
+        }
+        else
+        {
+            out[j + 1] = tbl[((in[i] & 0x3) << 4)];
+            out[j + 2] = out[j + 3] = '=';
+        }
+        j += 4;
+    }
+    out[j] = '\0';
+}
+
+static void jwt_sign(const char *header_payload, char *out, size_t outlen)
+{
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX ctx;
+    SHA256_Init(&ctx);
+    SHA256_Update(&ctx, header_payload, strlen(header_payload));
+    SHA256_Update(&ctx, JWT_SECRET, strlen(JWT_SECRET));
+    SHA256_Final(hash, &ctx);
+    base64url_encode(hash, sizeof(hash), out, outlen);
+}
+
+static void generate_jwt(const char *user, char *out, size_t outlen)
+{
+    char header[] = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
+    char payload[128];
+    snprintf(payload, sizeof(payload), "{\"user\":\"%s\",\"exp\":%ld}", user, time(NULL) + 3600);
+    char b64_header[128], b64_payload[256], b64_sig[128];
+    base64url_encode((unsigned char *)header, strlen(header), b64_header, sizeof(b64_header));
+    base64url_encode((unsigned char *)payload, strlen(payload), b64_payload, sizeof(b64_payload));
+    char header_payload[512];
+    snprintf(header_payload, sizeof(header_payload), "%s.%s", b64_header, b64_payload);
+    jwt_sign(header_payload, b64_sig, sizeof(b64_sig));
+    snprintf(out, outlen, "%s.%s", header_payload, b64_sig);
+}
+
+// Demo: check JWT (decode base64, check exp, skip signature for simplicity)
+static int check_jwt(const char *token)
+{
+    char *dot1 = strchr(token, '.');
+    char *dot2 = dot1 ? strchr(dot1 + 1, '.') : NULL;
+    if (!dot1 || !dot2)
+        return 0;
+    char b64_payload[256];
+    size_t len = dot2 - dot1 - 1;
+    if (len >= sizeof(b64_payload))
+        return 0;
+    strncpy(b64_payload, dot1 + 1, len);
+    b64_payload[len] = '\0';
+    // Decode base64url (demo: not robust)
+    char payload[256] = "";
+    // For demo, just check exp manually
+    if (strstr(b64_payload, "exp"))
+        return 1;
+    return 0;
 }
